@@ -107,6 +107,16 @@ const BookIcon = () => (
     <path d="M2 2h5l1 1 1-1h5v11H9l-1 1-1-1H2V2z" />
   </svg>
 );
+const SelectIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M2 2h4M10 2h4M2 2v4M14 2v4M2 10v4M14 10v4M2 14h4M10 14h4" />
+  </svg>
+);
+const TrashIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M3 4h10M5 4V3h6v1M6 7v4M10 7v4M4 4l1 9h6l1-9" />
+  </svg>
+);
 
 // ============================================================
 // Send to Claude
@@ -141,7 +151,16 @@ async function sendToClaude(app: App, elements: readonly any[], prompt: string, 
 // Action toolbar (visible in fullscreen editor)
 // ============================================================
 
-const ACTIONS = [
+interface ActionDef {
+  label: string;
+  icon: () => React.JSX.Element;
+  hint?: string;
+  prompt: string;
+  includeJson: boolean;
+  selectionOnly?: boolean;
+}
+
+const ACTIONS: ActionDef[] = [
   {
     label: "Ask Claude",
     icon: ChatIcon,
@@ -150,9 +169,16 @@ const ACTIONS = [
     includeJson: false,
   },
   {
+    label: "Iterate Selection",
+    icon: SelectIcon,
+    prompt: "I selected these elements from my canvas. Please improve/modify just these elements and redraw them using create_view. Keep their approximate positions and IDs so they merge back into the full diagram.",
+    includeJson: true,
+    selectionOnly: true,
+  },
+  {
     label: "Refine",
     icon: WandIcon,
-    prompt: "I sketched this rough diagram. Please clean it up and redraw it as a polished, well-organized diagram using the create_view tool. Keep the same concepts but improve the layout, colors, and styling.",
+    prompt: "I sketched this rough diagram. Please clean it up and redraw it as a polished, well-organized diagram using the create_view tool. Keep the same concepts but improve the layout, colors, and styling. Reuse the same element IDs so changes merge into the existing canvas.",
     includeJson: true,
   },
   {
@@ -169,7 +195,11 @@ const ACTIONS = [
   },
 ];
 
-function ActionToolbar({ app, getElements }: { app: App; getElements: () => readonly any[] }) {
+function ActionToolbar({ app, getElements, getSelectedElements }: {
+  app: App;
+  getElements: () => readonly any[];
+  getSelectedElements: () => readonly any[];
+}) {
   const [visible, setVisible] = useState(true);
   const [sending, setSending] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -190,16 +220,29 @@ function ActionToolbar({ app, getElements }: { app: App; getElements: () => read
     };
   }, []);
 
-  const handleAction = useCallback(async (action: typeof ACTIONS[number]) => {
-    const els = getElements();
-    if (els.length === 0 || sending) return;
+  const handleAction = useCallback(async (action: ActionDef) => {
+    if (sending) return;
+    const els = action.selectionOnly ? getSelectedElements() : getElements();
+    if (els.length === 0) {
+      if (action.selectionOnly) {
+        // No selection — fall back to all elements
+        const all = getElements();
+        if (all.length === 0) return;
+        setSending(true);
+        try {
+          await sendToClaude(app, all, action.prompt.replace("I selected these elements from my canvas.", "Here is my full canvas."), action.includeJson);
+        } finally { setSending(false); }
+        return;
+      }
+      return;
+    }
     setSending(true);
     try {
       await sendToClaude(app, els, action.prompt, action.includeJson);
     } finally {
       setSending(false);
     }
-  }, [app, getElements, sending]);
+  }, [app, getElements, getSelectedElements, sending]);
 
   return (
     <div className={`action-toolbar${visible ? "" : " hidden"}`}>
@@ -355,12 +398,13 @@ function sceneToSvgViewBox(
   };
 }
 
-function DiagramView({ toolInput, isFinal, displayMode, onElements, editedElements }: {
+function DiagramView({ toolInput, isFinal, displayMode, onElements, editedElements, sessionElements }: {
   toolInput: any;
   isFinal: boolean;
   displayMode: string;
   onElements?: (els: any[]) => void;
   editedElements?: any[];
+  sessionElements?: any[];
 }) {
   const svgRef = useRef<HTMLDivElement | null>(null);
   const latestRef = useRef<any[]>([]);
@@ -524,6 +568,9 @@ function DiagramView({ toolInput, isFinal, displayMode, onElements, editedElemen
 
     const str = typeof raw === "string" ? raw : JSON.stringify(raw);
 
+    // Existing session elements to render as stable background
+    const bgElements = sessionElements ?? [];
+
     if (isFinal) {
       const parsed = parsePartialElements(str);
       const { viewport, drawElements } = extractViewportAndElements(parsed);
@@ -536,7 +583,10 @@ function DiagramView({ toolInput, isFinal, displayMode, onElements, editedElemen
         .map((el: any) => el.type === "text" ? { ...el, fontFamily: 1 } : el);
       captureInitialElements(converted);
       if (!editedElements) onElements?.(converted);
-      renderSvgPreview(drawElements, viewport);
+      // Merge session background with new elements for the SVG preview
+      const newIds = new Set(drawElements.map((el: any) => el.id));
+      const bgOnly = bgElements.filter((el: any) => !newIds.has(el.id));
+      renderSvgPreview([...bgOnly, ...drawElements], viewport);
       return;
     }
 
@@ -557,9 +607,12 @@ function DiagramView({ toolInput, isFinal, displayMode, onElements, editedElemen
       latestHashRef.current = newHash;
       setCount(drawElements.length);
       const jittered = drawElements.map((el: any) => ({ ...el, seed: Math.floor(Math.random() * 1e9) }));
-      renderSvgPreview(jittered, viewport);
+      // Merge session background with new streaming elements
+      const newIds = new Set(jittered.map((el: any) => el.id));
+      const bgOnly = bgElements.filter((el: any) => !newIds.has(el.id));
+      renderSvgPreview([...bgOnly, ...jittered], viewport);
     }
-  }, [toolInput, isFinal, renderSvgPreview, editedElements, onElements]);
+  }, [toolInput, isFinal, renderSvgPreview, editedElements, onElements, sessionElements]);
 
   // Render already-converted elements directly (skip convertToExcalidrawElements)
   useEffect(() => {
@@ -613,6 +666,23 @@ function DiagramView({ toolInput, isFinal, displayMode, onElements, editedElemen
 // Main app
 // ============================================================
 
+// ============================================================
+// Session-level element merge helper
+// ============================================================
+
+/** Merge new elements into a session map by ID (upsert). Returns array of all session elements. */
+function mergeSessionElements(
+  sessionMap: Map<string, any>,
+  newElements: any[],
+): any[] {
+  for (const el of newElements) {
+    if (el.id) {
+      sessionMap.set(el.id, el);
+    }
+  }
+  return Array.from(sessionMap.values());
+}
+
 function ExcalidrawApp() {
   const [toolInput, setToolInput] = useState<any>(null);
   const [inputIsFinal, setInputIsFinal] = useState(false);
@@ -621,14 +691,54 @@ function ExcalidrawApp() {
   const [userEdits, setUserEdits] = useState<any[] | null>(null);
   const appRef = useRef<App | null>(null);
 
+  // Session-persistent element store: accumulates across create_view calls
+  const sessionElementsRef = useRef<Map<string, any>>(new Map());
+  // Whether we've set the session storage key yet
+  const sessionKeySet = useRef(false);
+
+  // Excalidraw imperative API ref (available in fullscreen editor mode)
+  const excalidrawAPIRef = useRef<any>(null);
+
+  /** Get currently selected elements from Excalidraw editor. */
+  const getSelectedElements = useCallback((): readonly any[] => {
+    const api = excalidrawAPIRef.current;
+    if (!api) return [];
+    try {
+      const appState = api.getAppState();
+      const selectedIds = appState?.selectedElementIds ?? {};
+      const sceneEls = api.getSceneElements() ?? [];
+      return sceneEls.filter((el: any) => selectedIds[el.id] && !el.isDeleted);
+    } catch {
+      return [];
+    }
+  }, []);
+
+  /** Set elements from new tool input, merging into session. */
+  const mergeAndSetElements = useCallback((newEls: any[]) => {
+    const merged = mergeSessionElements(sessionElementsRef.current, newEls);
+    setElements(merged);
+    setUserEdits(null);
+  }, []);
+
+  /** Clear all session state. */
+  const clearCanvas = useCallback(() => {
+    sessionElementsRef.current.clear();
+    setElements([]);
+    setUserEdits(null);
+    setToolInput(null);
+    setInputIsFinal(false);
+  }, []);
+
   const toggleFullscreen = useCallback(async () => {
     if (!appRef.current) return;
     const newMode = displayMode === "fullscreen" ? "inline" : "fullscreen";
     if (newMode === "inline") {
+      // Sync editor changes back to session
       const edited = getLatestEditedElements();
       if (edited) {
-        setElements(edited);
-        setUserEdits(edited);
+        const merged = mergeSessionElements(sessionElementsRef.current, edited);
+        setElements(merged);
+        setUserEdits(merged);
       }
     }
     try {
@@ -668,8 +778,9 @@ function ExcalidrawApp() {
           if (ctx.displayMode === "inline") {
             const edited = getLatestEditedElements();
             if (edited) {
-              setElements(edited);
-              setUserEdits(edited);
+              const merged = mergeSessionElements(sessionElementsRef.current, edited);
+              setElements(merged);
+              setUserEdits(merged);
             }
           }
           setDisplayMode(ctx.displayMode as "inline" | "fullscreen");
@@ -684,12 +795,20 @@ function ExcalidrawApp() {
 
       app.ontoolinput = async (input) => {
         const args = (input as any)?.arguments || input;
-        const toolCallId = String(app.getHostContext()?.toolInfo?.id ?? "default");
-        setStorageKey(toolCallId);
-        const persisted = loadPersistedElements();
-        if (persisted && persisted.length > 0) {
-          setElements(persisted);
-          setUserEdits(persisted);
+        // Use a single session-level storage key (first tool call ID)
+        if (!sessionKeySet.current) {
+          const toolCallId = String(app.getHostContext()?.toolInfo?.id ?? "default");
+          setStorageKey(`session-${toolCallId}`);
+          sessionKeySet.current = true;
+        }
+        // Load persisted session elements on first call
+        if (sessionElementsRef.current.size === 0) {
+          const persisted = loadPersistedElements();
+          if (persisted && persisted.length > 0) {
+            for (const el of persisted) {
+              if (el.id) sessionElementsRef.current.set(el.id, el);
+            }
+          }
         }
         setInputIsFinal(true);
         setToolInput(args);
@@ -703,12 +822,27 @@ function ExcalidrawApp() {
   if (error) return <div className="error">ERROR: {error.message}</div>;
   if (!app) return <div className="loading">Connecting...</div>;
 
-  const isBlankCanvas = inputIsFinal && elements.length === 0 && !userEdits?.length;
+  // Only show blank canvas if the tool input itself is empty ("[]") AND session is empty
+  const toolInputRaw = toolInput?.elements;
+  const toolInputIsEmpty = !toolInputRaw ||
+    (typeof toolInputRaw === "string" && toolInputRaw.trim() === "[]");
+  const sessionHasElements = sessionElementsRef.current.size > 0 || elements.length > 0;
+  const isBlankCanvas = inputIsFinal && !sessionHasElements && toolInputIsEmpty && !userEdits?.length;
   const showEditor = displayMode === "fullscreen" && inputIsFinal;
   return (
     <main className={`main${displayMode === "fullscreen" ? " fullscreen" : ""}`}>
       {displayMode === "inline" && !isBlankCanvas && (
         <div className="toolbar">
+          {sessionHasElements && (
+            <button
+              className="fullscreen-btn"
+              onClick={clearCanvas}
+              title="Clear canvas"
+              style={{ marginRight: 4 }}
+            >
+              <TrashIcon />
+            </button>
+          )}
           <button
             className="fullscreen-btn"
             onClick={toggleFullscreen}
@@ -722,6 +856,7 @@ function ExcalidrawApp() {
         {showEditor ? (
           <div style={{ width: "100%", height: "100vh", position: "relative" }}>
             <Excalidraw
+              excalidrawAPI={(api: any) => { excalidrawAPIRef.current = api; }}
               initialData={{ elements: (elements ?? []) as any, scrollToContent: elements?.length ? true : false }}
               theme="light"
               onChange={(els) => onEditorChange(app, els)}
@@ -729,6 +864,7 @@ function ExcalidrawApp() {
             <ActionToolbar
               app={app}
               getElements={() => getLatestEditedElements() ?? elements ?? []}
+              getSelectedElements={getSelectedElements}
             />
           </div>
         ) : isBlankCanvas ? (
@@ -738,8 +874,9 @@ function ExcalidrawApp() {
             toolInput={toolInput}
             isFinal={inputIsFinal}
             displayMode={displayMode}
-            onElements={setElements}
+            onElements={mergeAndSetElements}
             editedElements={userEdits ?? undefined}
+            sessionElements={elements}
           />
         )}
       </ErrorBoundary>
