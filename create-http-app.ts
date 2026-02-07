@@ -14,10 +14,25 @@ import path from "node:path";
 import { storeDrawing } from "./drawing-store.js";
 import { createServer } from "./server.js";
 
+const HTML_ERROR = (msg: string) =>
+  `<!DOCTYPE html><html><body><p>${msg}</p></body></html>`;
+
 export function createHttpApp(baseDir: string): express.Express {
   const app = createMcpExpressApp({ host: "0.0.0.0" });
   app.use(cors());
   app.use(express.json({ limit: "10mb" }));
+
+  // Widget UI (create_view) — host may resolve ui://excalidraw/mcp-app.html to this URL
+  app.get("/mcp-app.html", async (_req: Request, res: Response) => {
+    try {
+      const html = await fs.readFile(path.join(baseDir, "mcp-app.html"), "utf-8");
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(html);
+    } catch (e) {
+      console.error("Failed to serve mcp-app.html:", e);
+      res.status(500).setHeader("Content-Type", "text/html; charset=utf-8").send(HTML_ERROR("Widget not found. Run npm run build."));
+    }
+  });
 
   app.get("/excalidraw", async (_req: Request, res: Response) => {
     try {
@@ -26,7 +41,7 @@ export function createHttpApp(baseDir: string): express.Express {
       res.send(html);
     } catch (e) {
       console.error("Failed to serve standalone:", e);
-      res.status(500).send("Standalone app not found. Run npm run build.");
+      res.status(500).setHeader("Content-Type", "text/html; charset=utf-8").send(HTML_ERROR("Standalone app not found. Run npm run build."));
     }
   });
 
@@ -92,7 +107,7 @@ export function createStandaloneOnlyApp(baseDir: string): express.Express {
       res.send(html);
     } catch (e) {
       console.error("Failed to serve standalone:", e);
-      res.status(500).send("Standalone app not found. Run npm run build.");
+      res.status(500).setHeader("Content-Type", "text/html; charset=utf-8").send(HTML_ERROR("Standalone app not found. Run npm run build."));
     }
   });
 
