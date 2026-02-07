@@ -2,6 +2,10 @@
   "buildCommand": "npm run build",
   "installCommand": "npm install",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api" }
+    { "source": "/mcp-app.html", "destination": "/api?__path=/mcp-app.html" },
+    { "source": "/excalidraw", "destination": "/api?__path=/excalidraw" },
+    { "source": "/api/drawing", "destination": "/api?__path=/api/drawing" },
+    { "source": "/mcp", "destination": "/api?__path=/mcp" },
+    { "source": "/(.*)", "destination": "/api?__path=/$1" }
   ]
 }

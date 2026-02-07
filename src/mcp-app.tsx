@@ -15,11 +15,21 @@ import "./global.css";
 // ============================================================
 
 function parsePartialElements(str: string | undefined): any[] {
-  if (!str?.trim().startsWith("[")) return [];
-  try { return JSON.parse(str); } catch { /* partial */ }
-  const last = str.lastIndexOf("}");
+  const s = typeof str === "string" ? str.trim() : "";
+  if (!s.startsWith("[")) return [];
+  if (/^(Standalone|<!DOCTYPE|error\s)/i.test(s) || (s.length > 300 && !s.includes("type"))) return [];
+  try {
+    return JSON.parse(s);
+  } catch {
+    /* partial */
+  }
+  const last = s.lastIndexOf("}");
   if (last < 0) return [];
-  try { return JSON.parse(str.substring(0, last + 1) + "]"); } catch { /* incomplete */ }
+  try {
+    return JSON.parse(s.substring(0, last + 1) + "]");
+  } catch {
+    /* incomplete */
+  }
   return [];
 }
 

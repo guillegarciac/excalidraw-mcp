@@ -22,6 +22,16 @@ export function createHttpApp(baseDir: string): express.Express {
   app.use(cors());
   app.use(express.json({ limit: "10mb" }));
 
+  // Vercel: rewrites send all requests to /api?__path=/original-path — restore path for routing
+  app.use((req: Request, _res: Response, next: () => void) => {
+    const pathParam = req.query?.__path;
+    if (typeof pathParam === "string" && pathParam.startsWith("/")) {
+      req.url = pathParam;
+      delete (req.query as Record<string, unknown>).__path;
+    }
+    next();
+  });
+
   // Widget UI (create_view) — host may resolve ui://excalidraw/mcp-app.html to this URL
   app.get("/mcp-app.html", async (_req: Request, res: Response) => {
     try {

@@ -401,9 +401,23 @@ Call read_me first to learn the element format. Pass "[]" for elements to open a
       _meta: { ui: { resourceUri } },
     },
     async ({ elements }): Promise<CallToolResult> => {
+      const raw = typeof elements === "string" ? elements : String(elements ?? "");
+      if (!raw.trim().startsWith("[")) {
+        const looksLikeError =
+          /Standalone|not found|<!DOCTYPE|error/i.test(raw) || raw.length > 200;
+        return {
+          content: [{
+            type: "text",
+            text: looksLikeError
+              ? "Diagram data was not received (server may have returned an error page). Try again or ask for a blank canvas with elements \"[]\"."
+              : "elements must be a JSON array string starting with \"[\". Ensure no comments, no trailing commas, and proper quoting.",
+          }],
+          isError: true,
+        };
+      }
       let parsed: unknown;
       try {
-        parsed = JSON.parse(elements);
+        parsed = JSON.parse(raw);
       } catch (e) {
         return {
           content: [{ type: "text", text: `Invalid JSON in elements: ${(e as Error).message}. Ensure no comments, no trailing commas, and proper quoting.` }],
