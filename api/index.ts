@@ -4,17 +4,20 @@
  */
 import path from "node:path";
 
-let app: unknown = null;
+/** Express app used as (req, res) => void */
+type RequestListener = (req: unknown, res: unknown) => void;
 
-async function getApp() {
+let app: RequestListener | null = null;
+
+async function getApp(): Promise<RequestListener> {
   if (app) return app;
   const { createHttpApp } = await import("../dist/create-http-app.js");
   const baseDir = path.join(process.cwd(), "dist");
-  app = createHttpApp(baseDir);
+  app = createHttpApp(baseDir) as RequestListener;
   return app;
 }
 
 export default async function handler(req: unknown, res: unknown) {
   const expressApp = await getApp();
-  expressApp(req as any, res as any);
+  expressApp(req, res);
 }
