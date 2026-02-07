@@ -47,7 +47,8 @@ export async function startStdioServer(
   const app = createStandaloneOnlyApp(distDir);
 
   app.listen(port, () => {
-    console.log(`Standalone Excalidraw: http://localhost:${port}/excalidraw`);
+    // MUST use stderr — stdout is the MCP JSON-RPC transport in stdio mode
+    console.error(`Standalone Excalidraw: http://localhost:${port}/excalidraw`);
   });
 
   await createServerFn().connect(new StdioServerTransport());
