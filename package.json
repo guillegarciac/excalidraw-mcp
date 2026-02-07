@@ -11,7 +11,7 @@
     "excalidraw-mcp": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc --noEmit && cross-env INPUT=mcp-app.html vite build && cross-env INPUT=standalone.html vite build && tsc -p tsconfig.server.json && esbuild drawing-store-memory.ts --outfile=dist/drawing-store-memory.js --platform=node --format=esm && esbuild drawing-store-kv.ts --outfile=dist/drawing-store-kv.js --platform=node --format=esm --packages=external && esbuild drawing-store.ts --outfile=dist/drawing-store.js --platform=node --format=esm --external:./drawing-store-memory.js --external:./drawing-store-kv.js && esbuild server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:./drawing-store.js --packages=external && esbuild create-http-app.ts --outfile=dist/create-http-app.js --platform=node --format=esm --external:./server.js --external:./drawing-store.js --packages=external && esbuild main.ts --bundle --platform=node --format=esm --outfile=dist/index.js --external:./server.js --external:./drawing-store.js --packages=external --banner:js=\"#!/usr/bin/env node\"",
+    "build": "tsc --noEmit && cross-env INPUT=mcp-app.html vite build && cross-env INPUT=standalone.html vite build && tsc -p tsconfig.server.json && esbuild drawing-store-memory.ts --outfile=dist/drawing-store-memory.js --platform=node --format=esm && esbuild drawing-store-kv.ts --bundle --outfile=dist/drawing-store-kv.js --platform=node --format=esm --packages=external && esbuild drawing-store.ts --bundle --outfile=dist/drawing-store.js --platform=node --format=esm --external:./drawing-store-memory.js --external:./drawing-store-kv.js && esbuild server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:./drawing-store.js --packages=external && esbuild create-http-app.ts --bundle --outfile=dist/create-http-app.js --platform=node --format=esm --external:./server.js --external:./drawing-store.js --packages=external && esbuild main.ts --bundle --platform=node --format=esm --outfile=dist/index.js --external:./server.js --external:./drawing-store.js --packages=external --banner:js=\"#!/usr/bin/env node\"",
     "watch": "cross-env INPUT=mcp-app.html vite build --watch",
     "serve": "node --watch main.ts",
     "dev": "cross-env NODE_ENV=development concurrently \"npm run watch\" \"npm run serve\"",
@@ -19,9 +19,9 @@
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.0",
-    "@upstash/redis": "^1.36.0",
     "@modelcontextprotocol/ext-apps": "^0.4.0",
     "@modelcontextprotocol/sdk": "^1.24.0",
+    "@upstash/redis": "^1.36.2",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "morphdom": "^2.7.8",
