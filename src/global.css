@@ -1,0 +1,520 @@
+/* Load Excalidraw component CSS from CDN */
+@import url("https://esm.sh/@excalidraw/excalidraw@0.18.0/dist/prod/index.css");
+
+/* Load Excalidraw hand-drawn font from CDN */
+@font-face {
+  font-family: "Virgil";
+  src: url("https://esm.sh/@excalidraw/excalidraw@0.18.0/dist/prod/fonts/Virgil/Virgil-Regular.woff2") format("woff2");
+  font-display: swap;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 1rem;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ============================================================
+   Theme variables
+   ============================================================ */
+
+/* Light theme (default) */
+:root {
+  --text-color: #1a1a1a;
+  --text-muted: #6b7280;
+  --border-color: #e5e7eb;
+  --bg-color: #ffffff;
+  --bg-elevated: #f9fafb;
+  --skeleton-from: #f3f4f6;
+  --skeleton-to: #e5e7eb;
+}
+
+/* Dark theme */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text-color: #f3f4f6;
+    --text-muted: #9ca3af;
+    --border-color: #374151;
+    --bg-color: #1f2937;
+    --bg-elevated: #111827;
+    --skeleton-from: #374151;
+    --skeleton-to: #4b5563;
+  }
+}
+
+body {
+  background: transparent;
+  color: var(--text-color);
+}
+
+/* ============================================================
+   Layout
+   ============================================================ */
+
+.main {
+  outline: none;
+  position: relative;
+}
+
+/* Fullscreen mode */
+.main.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-color, #ffffff);
+  z-index: 9999;
+}
+
+.main.fullscreen .excalidraw-container {
+  height: 100vh;
+}
+
+.main.fullscreen .svg-wrapper svg {
+  max-height: 100vh;
+}
+
+/* ============================================================
+   Toolbar
+   ============================================================ */
+
+.toolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.main:hover .toolbar {
+  opacity: 1;
+}
+
+.fullscreen-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: #6b7280;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  pointer-events: auto;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.fullscreen-btn:hover {
+  color: #1a1a1a;
+  border-color: #9ca3af;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Hide fullscreen button in fullscreen mode (host provides exit UI) */
+.main.fullscreen .fullscreen-btn {
+  display: none !important;
+}
+
+/* ============================================================
+   Excalidraw container
+   ============================================================ */
+
+.excalidraw-container {
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+/* SVGLayer is for export only — hide to save space */
+.excalidraw-container .excalidraw .SVGLayer {
+  display: none !important;
+}
+
+/* Hide Excalidraw UI chrome in view mode */
+.excalidraw-container .excalidraw .App-menu,
+.excalidraw-container .excalidraw .App-toolbar,
+.excalidraw-container .excalidraw .layer-ui__wrapper__footer,
+.excalidraw-container .excalidraw .App-menu_top,
+.excalidraw-container .excalidraw .undo-redo-buttons,
+.excalidraw-container .excalidraw .HelpButton,
+.excalidraw-container .excalidraw .UserList,
+.excalidraw-container .excalidraw .main-menu-trigger,
+.excalidraw-container .excalidraw .welcome-screen-center,
+.excalidraw-container .excalidraw .welcome-screen-menu-hintContainer {
+  display: none !important;
+}
+
+/* SVG wrapper */
+.svg-wrapper {
+  width: 100%;
+}
+
+/* ============================================================
+   Animations — 3 layers
+   ============================================================ */
+
+/* Layer 1: Shape fade-in with subtle scale (improved) */
+.excalidraw-container svg :where(g, rect, circle, ellipse, text, image) {
+  animation: svgFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes svgFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Layer 2: Stroke draw-on effect (smoother curve) */
+.excalidraw-container svg :where(path, line, polyline, polygon) {
+  animation: strokeDraw 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes strokeDraw {
+  from {
+    stroke-dasharray: 1000;
+    stroke-dashoffset: 1000;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Layer 3: Smooth transitions for property changes on existing elements */
+.excalidraw-container svg :where(rect, circle, ellipse, path, line, polyline, polygon, text, g) {
+  transition: fill 0.4s ease-out, stroke 0.4s ease-out, opacity 0.4s ease-out;
+}
+
+/* ============================================================
+   Loading skeleton
+   ============================================================ */
+
+.loading-skeleton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+}
+
+.skeleton-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.skeleton-shape {
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--skeleton-from) 25%, var(--skeleton-to) 50%, var(--skeleton-from) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.skeleton-rect-lg {
+  width: 280px;
+  height: 60px;
+}
+
+.skeleton-rect-sm {
+  width: 200px;
+  height: 40px;
+}
+
+.skeleton-line {
+  width: 160px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ============================================================
+   Streaming indicator
+   ============================================================ */
+
+.streaming-indicator {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  z-index: 50;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.streaming-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #6b7280;
+  animation: dotPulse 1.2s ease-in-out infinite;
+}
+
+.streaming-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.streaming-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dotPulse {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ============================================================
+   Error boundary
+   ============================================================ */
+
+.error-boundary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+}
+
+.error-boundary-inner {
+  max-width: 400px;
+}
+
+.error-boundary-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-color);
+  margin: 0 0 8px;
+}
+
+.error-boundary-message {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ============================================================
+   States
+   ============================================================ */
+
+.loading {
+  padding: 1rem;
+  color: var(--text-muted);
+}
+
+.error {
+  padding: 1rem;
+  color: #dc2626;
+}
+
+/* ============================================================
+   Blank canvas
+   ============================================================ */
+
+.blank-canvas {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  padding: 2rem;
+  background: var(--bg-elevated);
+  border-radius: 12px;
+  border: 1px dashed var(--border-color);
+}
+
+.blank-canvas-inner {
+  text-align: center;
+  max-width: 320px;
+}
+
+.blank-canvas-icon {
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+.blank-canvas-icon svg {
+  opacity: 0.6;
+}
+
+.blank-canvas-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-color);
+  margin: 0 0 0.5rem;
+}
+
+.blank-canvas-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 0 0 1.25rem;
+  line-height: 1.4;
+}
+
+.blank-canvas-btn {
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  background: #4a9eed;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.blank-canvas-btn:hover {
+  background: #3b8ddb;
+}
+
+.blank-canvas-btn:active {
+  transform: scale(0.98);
+}
+
+/* ============================================================
+   Action toolbar (fullscreen editor)
+   ============================================================ */
+
+.action-toolbar {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  z-index: 10000;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  opacity: 1;
+}
+
+.action-toolbar.hidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+  pointer-events: none;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-weight: 500;
+  color: #374151;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.action-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #111827;
+}
+
+.action-btn:active {
+  background: rgba(0, 0, 0, 0.08);
+  transform: scale(0.97);
+}
+
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.action-btn svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.action-btn:hover svg {
+  opacity: 1;
+}
+
+.action-hint {
+  display: inline-block;
+  font-size: 10px;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #9ca3af;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 2px 5px;
+  border-radius: 4px;
+  margin-left: 2px;
+  line-height: 1;
+}
+
+.action-sending {
+  font-size: 12px;
+  color: #6b7280;
+  padding: 0 8px;
+  animation: dotPulse 1.2s ease-in-out infinite;
+}
+
+@media (prefers-color-scheme: dark) {
+  .action-toolbar {
+    background: rgba(31, 41, 55, 0.92);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  }
+
+  .action-btn {
+    color: #d1d5db;
+  }
+
+  .action-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: #f3f4f6;
+  }
+
+  .action-btn:active {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .action-hint {
+    color: #6b7280;
+    background: rgba(255, 255, 255, 0.08);
+  }
+}

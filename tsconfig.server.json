@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true
+  },
+  "include": ["server.ts", "drawing-store.ts", "drawing-store-memory.ts", "drawing-store-kv.ts", "create-http-app.ts"]
+}
