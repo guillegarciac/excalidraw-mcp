@@ -419,8 +419,15 @@ Call read_me first to learn the element format. Pass "[]" for elements to open a
       try {
         parsed = JSON.parse(raw);
       } catch (e) {
+        const msg = (e as Error).message;
+        const isErrorPage = /Standalone|not found|DOCTYPE|Unexpected token/i.test(msg);
         return {
-          content: [{ type: "text", text: `Invalid JSON in elements: ${(e as Error).message}. Ensure no comments, no trailing commas, and proper quoting.` }],
+          content: [{
+            type: "text",
+            text: isErrorPage
+              ? "Diagram data was not received (server may have returned an error page). Try again or ask for a blank canvas with elements \"[]\"."
+              : `Invalid JSON in elements: ${msg}. Ensure no comments, no trailing commas, and proper quoting.`,
+          }],
           isError: true,
         };
       }

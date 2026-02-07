@@ -15,20 +15,24 @@ import "./global.css";
 // ============================================================
 
 function parsePartialElements(str: string | undefined): any[] {
-  const s = typeof str === "string" ? str.trim() : "";
-  if (!s.startsWith("[")) return [];
-  if (/^(Standalone|<!DOCTYPE|error\s)/i.test(s) || (s.length > 300 && !s.includes("type"))) return [];
   try {
-    return JSON.parse(s);
+    const s = typeof str === "string" ? str.trim() : "";
+    if (!s || !s.startsWith("[")) return [];
+    if (/Standalone|not found|<!DOCTYPE|error\s/i.test(s) || (s.length > 300 && !s.includes("type"))) return [];
+    try {
+      return JSON.parse(s);
+    } catch {
+      /* partial */
+    }
+    const last = s.lastIndexOf("}");
+    if (last < 0) return [];
+    try {
+      return JSON.parse(s.substring(0, last + 1) + "]");
+    } catch {
+      /* incomplete */
+    }
   } catch {
-    /* partial */
-  }
-  const last = s.lastIndexOf("}");
-  if (last < 0) return [];
-  try {
-    return JSON.parse(s.substring(0, last + 1) + "]");
-  } catch {
-    /* incomplete */
+    /* never let parse errors surface */
   }
   return [];
 }
