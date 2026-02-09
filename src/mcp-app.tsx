@@ -6,7 +6,7 @@ import { Component, useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { initPencilAudio, playStroke } from "./pencil-audio";
-import { captureInitialElements, onEditorChange, setStorageKey, loadPersistedElements, getLatestEditedElements, setScreenshotCapture } from "./edit-context";
+import { captureInitialElements, onEditorChange, loadPersistedElements, savePersistedElements, clearPersistedElements, getLatestEditedElements, setScreenshotCapture } from "./edit-context";
 import { captureScreenshot } from "./screenshot";
 import "./global.css";
 
@@ -586,7 +586,11 @@ function DiagramView({ toolInput, isFinal, displayMode, onElements, editedElemen
       // Merge session background with new elements for the SVG preview
       const newIds = new Set(drawElements.map((el: any) => el.id));
       const bgOnly = bgElements.filter((el: any) => !newIds.has(el.id));
-      renderSvgPreview([...bgOnly, ...drawElements], viewport);
+      const allElements = [...bgOnly, ...drawElements];
+      renderSvgPreview(allElements, viewport);
+
+      // NOTE: updateModelContext removed — the 4000 token limit is too small for any
+      // useful canvas summary. Use the action toolbar (sendMessage) to share canvas state.
       return;
     }
 
@@ -693,9 +697,6 @@ function ExcalidrawApp() {
 
   // Session-persistent element store: accumulates across create_view calls
   const sessionElementsRef = useRef<Map<string, any>>(new Map());
-  // Whether we've set the session storage key yet
-  const sessionKeySet = useRef(false);
-
   // Excalidraw imperative API ref (available in fullscreen editor mode)
   const excalidrawAPIRef = useRef<any>(null);
 
@@ -713,32 +714,40 @@ function ExcalidrawApp() {
     }
   }, []);
 
-  /** Set elements from new tool input, merging into session. */
+  /** Set elements from new tool input, merging into session + saving to shared storage. */
   const mergeAndSetElements = useCallback((newEls: any[]) => {
     const merged = mergeSessionElements(sessionElementsRef.current, newEls);
     setElements(merged);
     setUserEdits(null);
+    savePersistedElements(merged);
   }, []);
 
-  /** Clear all session state. */
+  /** Clear all session state + shared storage. */
   const clearCanvas = useCallback(() => {
     sessionElementsRef.current.clear();
     setElements([]);
     setUserEdits(null);
     setToolInput(null);
     setInputIsFinal(false);
+    clearPersistedElements();
   }, []);
 
   const toggleFullscreen = useCallback(async () => {
     if (!appRef.current) return;
     const newMode = displayMode === "fullscreen" ? "inline" : "fullscreen";
     if (newMode === "inline") {
-      // Sync editor changes back to session
+      // Sync editor changes back to session + save to shared storage
       const edited = getLatestEditedElements();
       if (edited) {
         const merged = mergeSessionElements(sessionElementsRef.current, edited);
         setElements(merged);
         setUserEdits(merged);
+        savePersistedElements(merged);
+      }
+    } else {
+      // Entering fullscreen: ensure elements are populated from session
+      if (sessionElementsRef.current.size > 0) {
+        setElements(Array.from(sessionElementsRef.current.values()));
       }
     }
     try {
@@ -748,6 +757,22 @@ function ExcalidrawApp() {
       console.error("Failed to change display mode:", err);
     }
   }, [displayMode]);
+
+  // After Excalidraw editor mounts in fullscreen, force-update scene with elements
+  useEffect(() => {
+    if (displayMode !== "fullscreen" || !inputIsFinal) return;
+    // Small delay to let Excalidraw mount and expose its API
+    const timer = setTimeout(() => {
+      const api = excalidrawAPIRef.current;
+      if (api && elements.length > 0) {
+        try {
+          api.updateScene({ elements });
+          api.scrollToContent(undefined, { fitToViewport: true });
+        } catch {}
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [displayMode, inputIsFinal, elements]);
 
   // Keyboard shortcuts: Escape exits fullscreen, Cmd+Enter sends to Claude
   useEffect(() => {
@@ -781,6 +806,7 @@ function ExcalidrawApp() {
               const merged = mergeSessionElements(sessionElementsRef.current, edited);
               setElements(merged);
               setUserEdits(merged);
+              savePersistedElements(merged);
             }
           }
           setDisplayMode(ctx.displayMode as "inline" | "fullscreen");
@@ -789,22 +815,26 @@ function ExcalidrawApp() {
 
       app.ontoolinputpartial = async (input) => {
         const args = (input as any)?.arguments || input;
+        // Load shared session elements on first partial (provides stable background during streaming)
+        if (sessionElementsRef.current.size === 0) {
+          const persisted = loadPersistedElements();
+          if (persisted?.length) {
+            for (const el of persisted) {
+              if (el.id) sessionElementsRef.current.set(el.id, el);
+            }
+            setElements(Array.from(sessionElementsRef.current.values()));
+          }
+        }
         setInputIsFinal(false);
         setToolInput(args);
       };
 
       app.ontoolinput = async (input) => {
         const args = (input as any)?.arguments || input;
-        // Use a single session-level storage key (first tool call ID)
-        if (!sessionKeySet.current) {
-          const toolCallId = String(app.getHostContext()?.toolInfo?.id ?? "default");
-          setStorageKey(`session-${toolCallId}`);
-          sessionKeySet.current = true;
-        }
-        // Load persisted session elements on first call
+        // Load shared session elements on first call (if not already loaded during streaming)
         if (sessionElementsRef.current.size === 0) {
           const persisted = loadPersistedElements();
-          if (persisted && persisted.length > 0) {
+          if (persisted?.length) {
             for (const el of persisted) {
               if (el.id) sessionElementsRef.current.set(el.id, el);
             }

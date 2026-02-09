@@ -18,14 +18,16 @@ const RECALL_CHEAT_SHEET = `# Excalidraw Element Format
 
 Thanks for calling read_me! Do NOT call it again in this conversation — you will not see anything new. Now use create_view to draw.
 
-## Session Canvas (IMPORTANT)
+## Session Canvas (CRITICAL — READ THIS)
 
-The widget maintains a **persistent canvas** across multiple create_view calls in the same conversation.
-- New elements are **merged by ID**: existing elements with the same ID are updated, new IDs are added.
-- To **update** an element, reuse its ID. To **add** new elements, use new unique IDs.
-- The user can **select** specific elements in fullscreen and ask you to iterate on just those.
-- When the user says "add X to the diagram", emit ONLY the new elements (with new IDs). They will merge into the existing canvas.
-- When the user says "update" or "modify", reuse the existing element IDs so they are replaced in-place.
+Each create_view call renders its own diagram. To build on a previous diagram:
+- **ALWAYS include ALL existing elements** plus any new ones in every create_view call.
+- After each create_view, the current canvas elements are sent back to you as model context.
+- When the user says "add X to the diagram", include the FULL existing elements array AND append the new elements.
+- To **update** an element, reuse its original ID with modified properties.
+- To **add** new elements, use new unique IDs and append them to the existing array.
+- To **remove** an element, simply omit it from the array.
+- NEVER emit only the new elements — you must always emit the complete set.
 
 ## Color Palette (use consistently across all tools)
 
@@ -400,7 +402,7 @@ export function registerTools(server: McpServer, distDir: string): void {
       title: "Draw Diagram",
       description: `Renders a hand-drawn diagram using Excalidraw elements.
 Elements stream in one by one with draw-on animations.
-New elements are MERGED into the existing canvas by ID — reuse IDs to update, use new IDs to add.
+IMPORTANT: Always include ALL elements (existing + new) in every call. The current canvas state is sent as model context after each render.
 Call read_me first to learn the element format. Pass "[]" for elements to open a blank drawing canvas.`,
       inputSchema: z.object({
         elements: z.string().describe(
