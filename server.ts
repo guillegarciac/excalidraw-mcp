@@ -29,6 +29,40 @@ Each create_view call renders its own diagram. To build on a previous diagram:
 - To **remove** an element, simply omit it from the array.
 - NEVER emit only the new elements — you must always emit the complete set.
 
+## Expanding/Modifying Diagrams (CRITICAL — AVOID OVERLAP)
+
+When the user asks to "expand", "add detail", or "modify" an existing diagram:
+
+1. **ANALYZE the existing layout first**: Look at the current element positions (x, y, width, height) to understand the occupied space.
+
+2. **SHIFT existing elements to make room**: If you need more space:
+   - To add content BELOW: Increase the y-coordinates of elements that need to move down
+   - To add content to the RIGHT: Increase x-coordinates of elements that need to shift
+   - To add content ABOVE: Decrease y of existing elements OR place new content at smaller y values
+   - Example: If existing content spans y=100-400 and you need 200px more space below, shift all elements with y>300 by adding 200 to their y values
+
+3. **NEVER draw on top of existing content**: Check that new element coordinates don't overlap with existing ones.
+
+4. **Expand the camera viewport**: When adding content, update the cameraUpdate to show the expanded area:
+   - Original: \`{"type":"cameraUpdate","width":800,"height":600,"x":0,"y":0}\`
+   - Expanded: \`{"type":"cameraUpdate","width":1200,"height":900,"x":-50,"y":-50}\`
+
+5. **Preserve element IDs**: When moving elements, keep their original IDs so the transition animates smoothly.
+
+**Example: Expanding a diagram downward**
+Original has 3 boxes at y=100, y=200, y=300. User wants to add a new section with 2 more boxes.
+- Keep boxes at y=100, y=200, y=300 unchanged
+- Add a visual separator (line or zone) at y=400
+- Add new boxes at y=450, y=550
+- Update camera from 800x600 to 800x800 to show expanded content
+
+**Example: Adding detail between existing elements**
+Original has Box A at y=100 and Box B at y=300 with an arrow between them.
+- Move Box B and everything below it down by 150px (B now at y=450)
+- Update the arrow endpoints to match new positions
+- Add new detail elements in the gap (y=250 to y=400)
+- Update camera height if needed
+
 ## Color Palette (use consistently across all tools)
 
 ### Primary Colors

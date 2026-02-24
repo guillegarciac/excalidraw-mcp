@@ -1,5 +1,5 @@
 {
-  "name": "excalidraw-mcp-server",
+  "name": "@guillegarciac/excalidraw-mcp",
   "version": "1.0.0",
   "description": "MCP server that streams hand-drawn Excalidraw diagrams as SVG with animations",
   "author": "Guille Garcia",
@@ -10,8 +10,13 @@
   "bin": {
     "excalidraw-mcp": "dist/index.js"
   },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc --noEmit && cross-env INPUT=mcp-app.html vite build && cross-env INPUT=standalone.html vite build && tsc -p tsconfig.server.json && esbuild drawing-store-memory.ts --outfile=dist/drawing-store-memory.js --platform=node --format=esm && esbuild drawing-store-kv.ts --bundle --outfile=dist/drawing-store-kv.js --platform=node --format=esm --packages=external && esbuild drawing-store.ts --bundle --outfile=dist/drawing-store.js --platform=node --format=esm --external:./drawing-store-memory.js --external:./drawing-store-kv.js && esbuild server.ts --bundle --platform=node --format=esm --outfile=dist/server.js --external:./drawing-store.js --packages=external && esbuild create-http-app.ts --bundle --outfile=dist/create-http-app.js --platform=node --format=esm --external:./server.js --external:./drawing-store.js --packages=external && esbuild main.ts --bundle --platform=node --format=esm --outfile=dist/index.js --external:./server.js --external:./drawing-store.js --packages=external --banner:js=\"#!/usr/bin/env node\"",
+    "prepublishOnly": "npm run build",
     "watch": "cross-env INPUT=mcp-app.html vite build --watch",
     "serve": "node --watch main.ts",
     "dev": "cross-env NODE_ENV=development concurrently \"npm run watch\" \"npm run serve\"",

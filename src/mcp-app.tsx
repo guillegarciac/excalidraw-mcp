@@ -118,6 +118,46 @@ const TrashIcon = () => (
   </svg>
 );
 
+const DownloadIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M8 2v8M5 7l3 3 3-3M3 12h10v2H3z" />
+  </svg>
+);
+
+// ============================================================
+// Download as .excalidraw file
+// ============================================================
+
+function downloadAsExcalidraw(elements: readonly any[], filename = "diagram.excalidraw") {
+  const excalidrawFile = {
+    type: "excalidraw",
+    version: 2,
+    source: "https://excalidraw.com",
+    elements: elements.map((el: any) => {
+      // Keep all element properties for full fidelity
+      const { ...rest } = el;
+      return rest;
+    }),
+    appState: {
+      gridSize: null,
+      viewBackgroundColor: "#ffffff",
+    },
+    files: {},
+  };
+
+  const json = JSON.stringify(excalidrawFile, null, 2);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ============================================================
 // Send to Claude
 // ============================================================
@@ -161,6 +201,13 @@ interface ActionDef {
 }
 
 const ACTIONS: ActionDef[] = [
+  {
+    label: "Save",
+    icon: DownloadIcon,
+    hint: "\u2318S",
+    prompt: "__SAVE__", // Special marker for save action
+    includeJson: false,
+  },
   {
     label: "Ask Claude",
     icon: ChatIcon,
@@ -223,6 +270,16 @@ function ActionToolbar({ app, getElements, getSelectedElements }: {
   const handleAction = useCallback(async (action: ActionDef) => {
     if (sending) return;
     const els = action.selectionOnly ? getSelectedElements() : getElements();
+    
+    // Handle save action specially
+    if (action.prompt === "__SAVE__") {
+      const allEls = getElements();
+      if (allEls.length > 0) {
+        downloadAsExcalidraw(allEls);
+      }
+      return;
+    }
+    
     if (els.length === 0) {
       if (action.selectionOnly) {
         // No selection — fall back to all elements
@@ -745,9 +802,22 @@ function ExcalidrawApp() {
         savePersistedElements(merged);
       }
     } else {
-      // Entering fullscreen: ensure elements are populated from session
+      // Entering fullscreen: ensure elements are populated from session AND persisted storage
+      let els: any[] = [];
       if (sessionElementsRef.current.size > 0) {
-        setElements(Array.from(sessionElementsRef.current.values()));
+        els = Array.from(sessionElementsRef.current.values());
+      } else {
+        // Fallback: load from persisted storage
+        const persisted = loadPersistedElements();
+        if (persisted?.length) {
+          for (const el of persisted) {
+            if (el.id) sessionElementsRef.current.set(el.id, el);
+          }
+          els = persisted;
+        }
+      }
+      if (els.length > 0) {
+        setElements(els);
       }
     }
     try {
@@ -761,20 +831,45 @@ function ExcalidrawApp() {
   // After Excalidraw editor mounts in fullscreen, force-update scene with elements
   useEffect(() => {
     if (displayMode !== "fullscreen" || !inputIsFinal) return;
-    // Small delay to let Excalidraw mount and expose its API
-    const timer = setTimeout(() => {
+    
+    // Get elements from multiple sources as fallback
+    const getElementsToLoad = (): any[] => {
+      if (elements.length > 0) return elements;
+      if (sessionElementsRef.current.size > 0) return Array.from(sessionElementsRef.current.values());
+      const persisted = loadPersistedElements();
+      return persisted ?? [];
+    };
+    
+    // Try multiple times with increasing delays to handle race conditions
+    const tryUpdateScene = () => {
       const api = excalidrawAPIRef.current;
-      if (api && elements.length > 0) {
+      const els = getElementsToLoad();
+      if (api && els.length > 0) {
         try {
-          api.updateScene({ elements });
+          api.updateScene({ elements: els });
           api.scrollToContent(undefined, { fitToViewport: true });
-        } catch {}
+          return true;
+        } catch { return false; }
       }
-    }, 200);
-    return () => clearTimeout(timer);
+      return false;
+    };
+    
+    // Initial attempt after 100ms, retry at 300ms and 600ms if needed
+    const timer1 = setTimeout(() => {
+      if (!tryUpdateScene()) {
+        const timer2 = setTimeout(() => {
+          if (!tryUpdateScene()) {
+            setTimeout(() => tryUpdateScene(), 300);
+          }
+        }, 200);
+        return () => clearTimeout(timer2);
+      }
+    }, 100);
+    
+    return () => clearTimeout(timer1);
   }, [displayMode, inputIsFinal, elements]);
 
-  // Keyboard shortcuts: Escape exits fullscreen, Cmd+Enter sends to Claude
+  // Keyboard shortcuts: Escape exits fullscreen, Cmd+Enter sends to Claude, Cmd+S saves
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape" && displayMode === "fullscreen") toggleFullscreen();
@@ -783,6 +878,14 @@ function ExcalidrawApp() {
         const els = getLatestEditedElements() ?? elements;
         if (els.length > 0) {
           sendToClaude(appRef.current, els, ACTIONS[0].prompt, ACTIONS[0].includeJson);
+        }
+      }
+      // Cmd+S / Ctrl+S to save as .excalidraw file
+      if (e.key === "s" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        const els = getLatestEditedElements() ?? elements;
+        if (els.length > 0) {
+          downloadAsExcalidraw(els);
         }
       }
     };
@@ -801,12 +904,30 @@ function ExcalidrawApp() {
       app.onhostcontextchanged = (ctx: any) => {
         if (ctx.displayMode) {
           if (ctx.displayMode === "inline") {
+            // Leaving fullscreen: sync editor changes back
             const edited = getLatestEditedElements();
             if (edited) {
               const merged = mergeSessionElements(sessionElementsRef.current, edited);
               setElements(merged);
               setUserEdits(merged);
               savePersistedElements(merged);
+            }
+          } else if (ctx.displayMode === "fullscreen") {
+            // Entering fullscreen: ensure elements are loaded
+            let els: any[] = [];
+            if (sessionElementsRef.current.size > 0) {
+              els = Array.from(sessionElementsRef.current.values());
+            } else {
+              const persisted = loadPersistedElements();
+              if (persisted?.length) {
+                for (const el of persisted) {
+                  if (el.id) sessionElementsRef.current.set(el.id, el);
+                }
+                els = persisted;
+              }
+            }
+            if (els.length > 0) {
+              setElements(els);
             }
           }
           setDisplayMode(ctx.displayMode as "inline" | "fullscreen");
@@ -864,14 +985,24 @@ function ExcalidrawApp() {
       {displayMode === "inline" && !isBlankCanvas && (
         <div className="toolbar">
           {sessionHasElements && (
-            <button
-              className="fullscreen-btn"
-              onClick={clearCanvas}
-              title="Clear canvas"
-              style={{ marginRight: 4 }}
-            >
-              <TrashIcon />
-            </button>
+            <>
+              <button
+                className="fullscreen-btn"
+                onClick={() => downloadAsExcalidraw(elements)}
+                title="Download as .excalidraw"
+                style={{ marginRight: 4 }}
+              >
+                <DownloadIcon />
+              </button>
+              <button
+                className="fullscreen-btn"
+                onClick={clearCanvas}
+                title="Clear canvas"
+                style={{ marginRight: 4 }}
+              >
+                <TrashIcon />
+              </button>
+            </>
           )}
           <button
             className="fullscreen-btn"
